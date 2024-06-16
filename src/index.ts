@@ -1,64 +1,65 @@
-import postcss, { Rule } from 'postcss';
-import selectorParser from 'postcss-selector-parser';
-import plugin from 'tailwindcss/plugin';
-import withAlphaVariable, { withAlphaValue } from 'tailwindcss/lib/util/withAlphaVariable';
-import { variableConfig, modifierPairMap } from './config';
-import { ThemeFunction } from './typings/global';
-import { parseClassColor, ClassColor } from './parser';
+import postcss, { Rule } from "postcss";
+import selectorParser from "postcss-selector-parser";
+import plugin from "tailwindcss/plugin";
+import withAlphaVariable, { withAlphaValue } from "tailwindcss/lib/util/withAlphaVariable";
+import { variableConfig, modifierPairMap } from "./config";
+import { ThemeFunction } from "./typings/global";
+import { parseClassColor, ClassColor } from "./parser";
 
 const wrapMediaDarkRule = (() => {
   const darkRule = postcss.atRule({
-    name: 'media',
-    params: '(prefers-color-scheme: dark)',
+    name: "media",
+    params: "(prefers-color-scheme: dark)"
   });
   return (rule: Rule) => {
     rule.replaceWith(
       darkRule.clone({
-        nodes: [rule],
+        nodes: [rule]
       })
     );
   };
 })();
 
-const addDarkClass = (() => {
+const addDarkClass = (selector: string, className = "dark") => {
   const parser = selectorParser((selectors) => {
     selectors.each((selector) => {
       const firstChild = selector.at(0);
-      selector.insertBefore(firstChild, selectorParser.className({ value: 'dark' }));
-      selector.insertBefore(firstChild, selectorParser.combinator({ value: ' ' }));
+      selector.insertBefore(firstChild, selectorParser.className({ value: className }));
+      selector.insertBefore(firstChild, selectorParser.combinator({ value: " " }));
     });
   });
-  return (selector: string) => parser.processSync(selector);
-})();
+
+  return parser.processSync(selector);
+};
 
 export const getReverseColor = ({
   selector,
   classColor,
-  theme,
+  theme
 }: {
   selector: string;
   classColor: ClassColor;
   theme: ThemeFunction;
 }): string => {
   if (classColor.shade && classColor.shade in modifierPairMap) {
-    return theme(['colors', classColor.color, modifierPairMap[classColor.shade]]);
+    return theme(["colors", classColor.color, modifierPairMap[classColor.shade]]);
   } else if (classColor.color in modifierPairMap) {
-    return theme(['colors', modifierPairMap[classColor.color]]);
+    return theme(["colors", modifierPairMap[classColor.color]]);
   }
-  return '';
+  return "";
 };
 
-export const bicolor = ({ variantName = 'bi', getColor = getReverseColor } = {}) =>
+export const bicolor = ({ variantName = "bi", getColor = getReverseColor } = {}) =>
   plugin(({ addVariant, config, theme, e: encode, corePlugins }) => {
-    const darkMode = config('darkMode', 'media');
+    const darkMode = config("darkMode", "media");
 
     addVariant(variantName, [
-      '&',
+      "&",
       ({ container, separator }) => {
         container.walkRules((rule) => {
           // 1. convert `bg-slate-100\/20` to `bg-slate-100/20`
           // 2. `divide-slate-200` will be `.divide-slate-200 > :not([hidden]) ~ :not([hidden])`, convert it to `divide-slate-200`
-          const bareSelector = rule.selector.slice(1).replace(/\\\//g, '/').split(' ')[0];
+          const bareSelector = rule.selector.slice(1).replace(/\\\//g, "/").split(" ")[0];
           const classColor = parseClassColor(bareSelector);
           if (!classColor) return;
 
@@ -75,24 +76,29 @@ export const bicolor = ({ variantName = 'bi', getColor = getReverseColor } = {})
                 : colorConfig.variable && corePlugins(colorConfig.plugin)
                 ? withAlphaVariable({
                     color,
-                    property: 'color',
-                    variable: colorConfig.variable!,
+                    property: "color",
+                    variable: colorConfig.variable!
                   }).color
                 : color;
-            } else if (decl.prop.startsWith('--')) {
+            } else if (decl.prop.startsWith("--")) {
               // remove css variables (normal state has declared)
               decl.remove();
               return;
             }
           });
 
-          if (darkMode === 'class') {
+          if (darkMode === "class") {
             rule.selector = addDarkClass(`.${variantName}${encode(`${separator}${bareSelector}`)}`);
+          } else if (Array.isArray(darkMode) && darkMode.includes("class")) {
+            rule.selector = addDarkClass(
+              `.${variantName}${encode(`${separator}${bareSelector}`)}`,
+              darkMode[1]
+            );
           } else {
             wrapMediaDarkRule(rule);
           }
         });
-      },
+      }
     ]);
   });
 
